@@ -26,10 +26,25 @@ async function run() {
     
 
     const apartmentCollection = client.db('nexusLivingDB').collection('apartments');
+    const agreementsCollection = client.db('nexusLivingDB').collection('agreements');
 
     // API to get all apartments
     app.get('/apartments', async (req, res) => {
       const result = await apartmentCollection.find().toArray();
+      res.send(result);
+    });
+
+    // API to create a new agreement
+    app.post('/agreements', async (req, res) => {
+      const agreement = req.body;
+
+      // Check if user already has an agreement
+      const existingAgreement = await agreementsCollection.findOne({ user_email: agreement.user_email });
+      if (existingAgreement) {
+          return res.status(400).send({ message: 'You have already requested an agreement.' });
+      }
+
+      const result = await agreementsCollection.insertOne(agreement);
       res.send(result);
     });
 
