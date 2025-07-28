@@ -28,14 +28,26 @@ async function run() {
     const apartmentCollection = client.db('nexusLivingDB').collection('apartments');
     const agreementsCollection = client.db('nexusLivingDB').collection('agreements');
 
-    // API to get all apartments with pagination
+    // API to get all apartments with pagination and search
     app.get('/apartments', async (req, res) => {
       const page = parseInt(req.query.page) || 0;
       const size = parseInt(req.query.size) || 6;
+      const minRent = parseInt(req.query.minRent);
+      const maxRent = parseInt(req.query.maxRent);
       const skip = page * size;
 
-      const count = await apartmentCollection.countDocuments();
-      const apartments = await apartmentCollection.find().skip(skip).limit(size).toArray();
+      const query = {};
+
+      if (!isNaN(minRent) && !isNaN(maxRent)) {
+        query.rent = { $gte: minRent, $lte: maxRent };
+      } else if (!isNaN(minRent)) {
+        query.rent = { $gte: minRent };
+      } else if (!isNaN(maxRent)) {
+        query.rent = { $lte: maxRent };
+      }
+
+      const count = await apartmentCollection.countDocuments(query);
+      const apartments = await apartmentCollection.find(query).skip(skip).limit(size).toArray();
       
       res.send({
         count,
