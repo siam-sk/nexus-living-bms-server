@@ -31,6 +31,20 @@ async function run() {
     const userCollection = client.db('nexusLivingDB').collection('users');
     const couponsCollection = client.db('nexusLivingDB').collection('coupons');
 
+    // API to create or update a user (upsert)
+    app.put('/users', async (req, res) => {
+        const user = req.body;
+        const query = { email: user.email };
+        // Set default role to 'user' only on insert
+        const updateDoc = {
+            $set: user,
+            $setOnInsert: { role: 'user' }
+        };
+        const options = { upsert: true };
+        const result = await userCollection.updateOne(query, updateDoc, options);
+        res.send(result);
+    });
+
     // API to get all coupons
     app.get('/coupons', async (req, res) => {
         const result = await couponsCollection.find().toArray();
@@ -69,6 +83,13 @@ async function run() {
         const email = req.params.email;
         const user = await userCollection.findOne({ email: email });
         res.send({ admin: user?.role === 'admin' });
+    });
+
+    // API to check if a user is a member
+    app.get('/users/member/:email', async (req, res) => {
+        const email = req.params.email;
+        const user = await userCollection.findOne({ email: email });
+        res.send({ member: user?.role === 'member' });
     });
 
     // API to get all apartments with pagination and search
