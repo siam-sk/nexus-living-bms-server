@@ -102,6 +102,43 @@ async function run() {
         res.send(result);
     });
 
+    // API to get all pending agreement requests
+    app.get('/agreements', async (req, res) => {
+        const query = { status: 'pending' };
+        const result = await agreementsCollection.find(query).toArray();
+        res.send(result);
+    });
+
+    // API to accept an agreement
+    app.patch('/agreements/accept/:id', async (req, res) => {
+        const id = req.params.id;
+        const agreementFilter = { _id: new ObjectId(id) };
+
+        const agreement = await agreementsCollection.findOne(agreementFilter);
+        if (!agreement) {
+            return res.status(404).send({ message: 'Agreement not found.' });
+        }
+
+        // Update user's role to 'member'
+        const userFilter = { email: agreement.user_email };
+        const userUpdateDoc = { $set: { role: 'member' } };
+        await userCollection.updateOne(userFilter, userUpdateDoc);
+
+        // Update agreement status and set accept date
+        const agreementUpdateDoc = { $set: { status: 'checked', agreement_date: new Date() } };
+        const result = await agreementsCollection.updateOne(agreementFilter, agreementUpdateDoc);
+        res.send(result);
+    });
+
+    // API to reject an agreement
+    app.patch('/agreements/reject/:id', async (req, res) => {
+        const id = req.params.id;
+        const filter = { _id: new ObjectId(id) };
+        const updateDoc = { $set: { status: 'checked' } };
+        const result = await agreementsCollection.updateOne(filter, updateDoc);
+        res.send(result);
+    });
+
     // API to create a new agreement
     app.post('/agreements', async (req, res) => {
       const agreement = req.body;
