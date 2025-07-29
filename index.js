@@ -69,6 +69,14 @@ async function run() {
       res.send(result);
     });
 
+    // API to get a specific agreement by user email
+    app.get('/agreements/:email', async (req, res) => {
+      const email = req.params.email;
+      const query = { user_email: email };
+      const result = await agreementsCollection.findOne(query);
+      res.send(result);
+    });
+
     // Send a ping to confirm a successful connection
     await client.db('admin').command({ ping: 1 });
     console.log(
