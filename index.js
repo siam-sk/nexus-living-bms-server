@@ -5,7 +5,9 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const admin = require('firebase-admin');
 
 // Initialize Firebase Admin
-const serviceAccount = require('./firebase-service-account.json');
+// const serviceAccount = require('./firebase-service-account.json'); 
+const serviceAccount = JSON.parse(process.env.SERVICE_ACCOUNT_JSON); 
+
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
@@ -14,7 +16,13 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'https://nexus-living.web.app' 
+  ],
+  credentials: true
+}));
 app.use(express.json());
 
 // JWT Verification Middleware
@@ -310,7 +318,7 @@ async function run() {
     app.patch('/agreements/reject/:id', verifyToken, verifyAdmin, async (req, res) => {
         const id = req.params.id;
         const filter = { _id: new ObjectId(id) };
-        const updateDoc = { $set: { status: 'checked' } };
+        const updateDoc = { $set: { status: 'rejected' } };
         const result = await agreementsCollection.updateOne(filter, updateDoc);
         res.send(result);
     });
@@ -341,6 +349,7 @@ async function run() {
     });
 
     // Send a ping to confirm a successful connection
+    
     await client.db('admin').command({ ping: 1 });
     console.log(
       'Pinged your deployment. You successfully connected to MongoDB!'
@@ -356,6 +365,10 @@ app.get('/', (req, res) => {
   res.send('A12 BMS Server is running');
 });
 
+/*
 app.listen(port, () => {
   console.log(`BMS Server is running on port: ${port}`);
 });
+*/
+
+module.exports = app;
