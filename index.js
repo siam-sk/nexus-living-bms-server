@@ -29,6 +29,20 @@ async function run() {
     const agreementsCollection = client.db('nexusLivingDB').collection('agreements');
     const announcementCollection = client.db('nexusLivingDB').collection('announcements');
     const userCollection = client.db('nexusLivingDB').collection('users');
+    const couponsCollection = client.db('nexusLivingDB').collection('coupons');
+
+    // API to get all coupons
+    app.get('/coupons', async (req, res) => {
+        const result = await couponsCollection.find().toArray();
+        res.send(result);
+    });
+
+    // API to create a new coupon
+    app.post('/coupons', async (req, res) => {
+        const couponData = req.body;
+        const result = await couponsCollection.insertOne(couponData);
+        res.send(result);
+    });
 
     // API to get all members
     app.get('/users/members', async (req, res) => {
