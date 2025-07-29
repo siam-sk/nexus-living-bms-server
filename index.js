@@ -2,6 +2,13 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const admin = require('firebase-admin');
+
+// Initialize Firebase Admin
+const serviceAccount = require('./firebase-service-account.json');
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -9,6 +16,21 @@ const port = process.env.PORT || 5000;
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// JWT Verification Middleware
+const verifyToken = async (req, res, next) => {
+  if (!req.headers.authorization) {
+    return res.status(401).send({ message: 'unauthorized access' });
+  }
+  const token = req.headers.authorization.split(' ')[1];
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    req.decoded = decodedToken;
+    next();
+  } catch (error) {
+    return res.status(401).send({ message: 'unauthorized access' });
+  }
+};
 
 // MongoDB Connection
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.elmkg1h.mongodb.net/?retryWrites=true&w=majority`;
@@ -32,8 +54,20 @@ async function run() {
     const couponsCollection = client.db('nexusLivingDB').collection('coupons');
     const paymentsCollection = client.db('nexusLivingDB').collection('payments');
 
+    // Admin Verification Middleware
+    const verifyAdmin = async (req, res, next) => {
+        const email = req.decoded.email;
+        const query = { email: email };
+        const user = await userCollection.findOne(query);
+        const isAdmin = user?.role === 'admin';
+        if (!isAdmin) {
+            return res.status(403).send({ message: 'forbidden access' });
+        }
+        next();
+    };
+
     // API to save a new payment record
-    app.post('/payments', async (req, res) => {
+    app.post('/payments', verifyToken, async (req, res) => {
         const paymentDetails = req.body;
         const paymentRecord = {
             ...paymentDetails,
@@ -45,8 +79,12 @@ async function run() {
     });
 
     // API to get payment history for a specific user, with search by month
-    app.get('/payments/:email', async (req, res) => {
+    app.get('/payments/:email', verifyToken, async (req, res) => {
         const email = req.params.email;
+        // Security check: ensure the requester is asking for their own data
+        if (req.decoded.email !== email) {
+            return res.status(403).send({ message: 'forbidden access' });
+        }
         const searchMonth = req.query.month;
 
         const query = { email: email };
@@ -60,7 +98,7 @@ async function run() {
     });
 
     // API to get admin statistics
-    app.get('/admin-stats', async (req, res) => {
+    app.get('/admin-stats', verifyToken, verifyAdmin, async (req, res) => {
         try {
             const totalRooms = await apartmentCollection.countDocuments();
             const unavailableRooms = await agreementsCollection.countDocuments({ status: 'checked' });
@@ -112,8 +150,11 @@ async function run() {
     });
 
     // API to get a specific member's accepted agreement
-    app.get('/agreement/:email', async (req, res) => {
+    app.get('/agreement/:email', verifyToken, async (req, res) => {
         const email = req.params.email;
+        if (req.decoded.email !== email) {
+            return res.status(403).send({ message: 'forbidden access' });
+        }
         const query = { user_email: email, status: 'checked' };
         const result = await agreementsCollection.findOne(query);
         res.send(result);
@@ -127,15 +168,17 @@ async function run() {
         res.send(result);
     });
 
+    // --- All routes below are now protected by verifyToken and verifyAdmin ---
+
     // API to get all members
-    app.get('/users/members', async (req, res) => {
+    app.get('/users/members', verifyToken, verifyAdmin, async (req, res) => {
         const query = { role: 'member' };
         const members = await userCollection.find(query).toArray();
         res.send(members);
     });
 
     // API to update a member's role to 'user'
-    app.patch('/users/member/:id', async (req, res) => {
+    app.patch('/users/member/:id', verifyToken, verifyAdmin, async (req, res) => {
         const id = req.params.id;
         const filter = { _id: new ObjectId(id) };
         const updatedDoc = {
@@ -148,15 +191,21 @@ async function run() {
     });
 
     // API to check if a user is an admin
-    app.get('/users/admin/:email', async (req, res) => {
+    app.get('/users/admin/:email', verifyToken, async (req, res) => {
         const email = req.params.email;
+        if (req.decoded.email !== email) {
+            return res.status(403).send({ message: 'forbidden access' });
+        }
         const user = await userCollection.findOne({ email: email });
         res.send({ admin: user?.role === 'admin' });
     });
 
     // API to check if a user is a member
-    app.get('/users/member/:email', async (req, res) => {
+    app.get('/users/member/:email', verifyToken, async (req, res) => {
         const email = req.params.email;
+        if (req.decoded.email !== email) {
+            return res.status(403).send({ message: 'forbidden access' });
+        }
         const user = await userCollection.findOne({ email: email });
         res.send({ member: user?.role === 'member' });
     });
@@ -195,7 +244,7 @@ async function run() {
     });
 
     // API to create a new announcement
-    app.post('/announcements', async (req, res) => {
+    app.post('/announcements', verifyToken, verifyAdmin, async (req, res) => {
         const announcementData = req.body;
         const newAnnouncement = {
             ...announcementData,
@@ -207,14 +256,14 @@ async function run() {
     });
 
     // API to get all pending agreement requests
-    app.get('/agreements', async (req, res) => {
+    app.get('/agreements', verifyToken, verifyAdmin, async (req, res) => {
         const query = { status: 'pending' };
         const result = await agreementsCollection.find(query).toArray();
         res.send(result);
     });
 
     // API to accept an agreement
-    app.patch('/agreements/accept/:id', async (req, res) => {
+    app.patch('/agreements/accept/:id', verifyToken, verifyAdmin, async (req, res) => {
         const id = req.params.id;
         const agreementFilter = { _id: new ObjectId(id) };
 
@@ -235,7 +284,7 @@ async function run() {
     });
 
     // API to reject an agreement
-    app.patch('/agreements/reject/:id', async (req, res) => {
+    app.patch('/agreements/reject/:id', verifyToken, verifyAdmin, async (req, res) => {
         const id = req.params.id;
         const filter = { _id: new ObjectId(id) };
         const updateDoc = { $set: { status: 'checked' } };
@@ -244,7 +293,7 @@ async function run() {
     });
 
     // API to create a new agreement
-    app.post('/agreements', async (req, res) => {
+    app.post('/agreements', verifyToken, async (req, res) => {
       const agreement = req.body;
 
       // Check if user already has an agreement
@@ -258,8 +307,11 @@ async function run() {
     });
 
     // API to get a specific agreement by user email
-    app.get('/agreements/:email', async (req, res) => {
+    app.get('/agreements/:email', verifyToken, async (req, res) => {
       const email = req.params.email;
+      if (req.decoded.email !== email) {
+        return res.status(403).send({ message: 'forbidden access' });
+      }
       const query = { user_email: email };
       const result = await agreementsCollection.findOne(query);
       res.send(result);
