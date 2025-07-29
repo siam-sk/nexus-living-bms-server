@@ -44,6 +44,21 @@ async function run() {
         res.send(result);
     });
 
+    // API to get payment history for a specific user, with search by month
+    app.get('/payments/:email', async (req, res) => {
+        const email = req.params.email;
+        const searchMonth = req.query.month;
+
+        const query = { email: email };
+        if (searchMonth) {
+            // Case-insensitive search for the month
+            query.month = { $regex: `^${searchMonth}$`, $options: 'i' };
+        }
+
+        const result = await paymentsCollection.find(query).sort({ payment_date: -1 }).toArray();
+        res.send(result);
+    });
+
     // API to create or update a user (upsert)
     app.put('/users', async (req, res) => {
         const user = req.body;
