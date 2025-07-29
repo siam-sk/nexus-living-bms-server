@@ -90,6 +90,18 @@ async function run() {
       res.send(result);
     });
 
+    // API to create a new announcement
+    app.post('/announcements', async (req, res) => {
+        const announcementData = req.body;
+        const newAnnouncement = {
+            ...announcementData,
+            date: new Date(), 
+            type: 'info'      
+        };
+        const result = await announcementCollection.insertOne(newAnnouncement);
+        res.send(result);
+    });
+
     // API to create a new agreement
     app.post('/agreements', async (req, res) => {
       const agreement = req.body;
