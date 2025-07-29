@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -29,6 +29,26 @@ async function run() {
     const agreementsCollection = client.db('nexusLivingDB').collection('agreements');
     const announcementCollection = client.db('nexusLivingDB').collection('announcements');
     const userCollection = client.db('nexusLivingDB').collection('users');
+
+    // API to get all members
+    app.get('/users/members', async (req, res) => {
+        const query = { role: 'member' };
+        const members = await userCollection.find(query).toArray();
+        res.send(members);
+    });
+
+    // API to update a member's role to 'user'
+    app.patch('/users/member/:id', async (req, res) => {
+        const id = req.params.id;
+        const filter = { _id: new ObjectId(id) };
+        const updatedDoc = {
+            $set: {
+                role: 'user'
+            }
+        };
+        const result = await userCollection.updateOne(filter, updatedDoc);
+        res.send(result);
+    });
 
     // API to check if a user is an admin
     app.get('/users/admin/:email', async (req, res) => {
