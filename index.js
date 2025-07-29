@@ -27,6 +27,7 @@ async function run() {
 
     const apartmentCollection = client.db('nexusLivingDB').collection('apartments');
     const agreementsCollection = client.db('nexusLivingDB').collection('agreements');
+    const announcementCollection = client.db('nexusLivingDB').collection('announcements');
 
     // API to get all apartments with pagination and search
     app.get('/apartments', async (req, res) => {
@@ -53,6 +54,12 @@ async function run() {
         count,
         apartments
       });
+    });
+
+    // API to get all announcements
+    app.get('/announcements', async (req, res) => {
+      const result = await announcementCollection.find().sort({ date: -1 }).toArray();
+      res.send(result);
     });
 
     // API to create a new agreement
