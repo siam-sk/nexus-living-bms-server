@@ -28,6 +28,14 @@ async function run() {
     const apartmentCollection = client.db('nexusLivingDB').collection('apartments');
     const agreementsCollection = client.db('nexusLivingDB').collection('agreements');
     const announcementCollection = client.db('nexusLivingDB').collection('announcements');
+    const userCollection = client.db('nexusLivingDB').collection('users');
+
+    // API to check if a user is an admin
+    app.get('/users/admin/:email', async (req, res) => {
+        const email = req.params.email;
+        const user = await userCollection.findOne({ email: email });
+        res.send({ admin: user?.role === 'admin' });
+    });
 
     // API to get all apartments with pagination and search
     app.get('/apartments', async (req, res) => {
