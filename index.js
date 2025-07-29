@@ -59,6 +59,31 @@ async function run() {
         res.send(result);
     });
 
+    // API to get admin statistics
+    app.get('/admin-stats', async (req, res) => {
+        try {
+            const totalRooms = await apartmentCollection.countDocuments();
+            const unavailableRooms = await agreementsCollection.countDocuments({ status: 'checked' });
+            const totalUsers = await userCollection.countDocuments();
+            const totalMembers = await userCollection.countDocuments({ role: 'member' });
+
+            const availableRooms = totalRooms - unavailableRooms;
+
+            const availablePercentage = totalRooms > 0 ? (availableRooms / totalRooms) * 100 : 0;
+            const unavailablePercentage = totalRooms > 0 ? (unavailableRooms / totalRooms) * 100 : 0;
+
+            res.send({
+                totalRooms,
+                availablePercentage: availablePercentage.toFixed(2),
+                unavailablePercentage: unavailablePercentage.toFixed(2),
+                totalUsers,
+                totalMembers,
+            });
+        } catch (error) {
+            res.status(500).send({ message: 'Failed to fetch admin stats', error });
+        }
+    });
+
     // API to create or update a user (upsert)
     app.put('/users', async (req, res) => {
         const user = req.body;
