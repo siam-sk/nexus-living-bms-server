@@ -30,6 +30,19 @@ async function run() {
     const announcementCollection = client.db('nexusLivingDB').collection('announcements');
     const userCollection = client.db('nexusLivingDB').collection('users');
     const couponsCollection = client.db('nexusLivingDB').collection('coupons');
+    const paymentsCollection = client.db('nexusLivingDB').collection('payments');
+
+    // API to save a new payment record
+    app.post('/payments', async (req, res) => {
+        const paymentDetails = req.body;
+        const paymentRecord = {
+            ...paymentDetails,
+            payment_date: new Date(),
+            transaction_id: `txn_${new Date().getTime()}`
+        };
+        const result = await paymentsCollection.insertOne(paymentRecord);
+        res.send(result);
+    });
 
     // API to create or update a user (upsert)
     app.put('/users', async (req, res) => {
@@ -55,6 +68,22 @@ async function run() {
     app.post('/coupons', async (req, res) => {
         const couponData = req.body;
         const result = await couponsCollection.insertOne(couponData);
+        res.send(result);
+    });
+
+    // API to get a specific member's accepted agreement
+    app.get('/agreement/:email', async (req, res) => {
+        const email = req.params.email;
+        const query = { user_email: email, status: 'checked' };
+        const result = await agreementsCollection.findOne(query);
+        res.send(result);
+    });
+
+    // API to validate a coupon code
+    app.get('/coupons/:code', async (req, res) => {
+        const code = req.params.code;
+        const query = { coupon_code: code };
+        const result = await couponsCollection.findOne(query);
         res.send(result);
     });
 
