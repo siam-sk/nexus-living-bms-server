@@ -143,9 +143,31 @@ async function run() {
     });
 
     // API to create a new coupon
-    app.post('/coupons', async (req, res) => {
+    app.post('/coupons', verifyToken, verifyAdmin, async (req, res) => {
         const couponData = req.body;
-        const result = await couponsCollection.insertOne(couponData);
+        const newCoupon = {
+            ...couponData,
+            availability: 'available' // Add default availability
+        };
+        const result = await couponsCollection.insertOne(newCoupon);
+        res.send(result);
+    });
+
+    // API to toggle coupon availability
+    app.patch('/coupons/toggle/:id', verifyToken, verifyAdmin, async (req, res) => {
+        const id = req.params.id;
+        const filter = { _id: new ObjectId(id) };
+        const coupon = await couponsCollection.findOne(filter);
+
+        if (!coupon) {
+            return res.status(404).send({ message: 'Coupon not found.' });
+        }
+
+        const newAvailability = coupon.availability === 'available' ? 'unavailable' : 'available';
+        const updateDoc = {
+            $set: { availability: newAvailability },
+        };
+        const result = await couponsCollection.updateOne(filter, updateDoc);
         res.send(result);
     });
 
@@ -163,9 +185,10 @@ async function run() {
     // API to validate a coupon code
     app.get('/coupons/:code', async (req, res) => {
         const code = req.params.code;
-        const query = { coupon_code: code };
+        // Only find the coupon if it is available
+        const query = { coupon_code: code, availability: 'available' };
         const result = await couponsCollection.findOne(query);
-        res.send(result);
+        res.send(result); // Will send null if not found or unavailable
     });
 
     // --- All routes below are now protected by verifyToken and verifyAdmin ---
