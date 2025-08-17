@@ -5,8 +5,15 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const admin = require('firebase-admin');
 
 // Initialize Firebase Admin
-// const serviceAccount = require('./firebase-service-account.json'); 
-const serviceAccount = JSON.parse(process.env.SERVICE_ACCOUNT_JSON); 
+let serviceAccount;
+// Check if running in production (like on Vercel)
+if (process.env.NODE_ENV === 'production') {
+  // On Vercel, read from the environment variable
+  serviceAccount = JSON.parse(process.env.SERVICE_ACCOUNT_JSON);
+} else {
+  // On local machine, read from the file
+  serviceAccount = require('./firebase-service-account.json');
+}
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
@@ -19,7 +26,8 @@ const port = process.env.PORT || 5000;
 app.use(cors({
   origin: [
     'http://localhost:5173',
-    'https://nexus-living.web.app' 
+    'https://nexus-living.web.app',
+    'https://nexus-living.firebaseapp.com'
   ],
   credentials: true
 }));
@@ -54,6 +62,7 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     
+    await client.connect();
 
     const apartmentCollection = client.db('nexusLivingDB').collection('apartments');
     const agreementsCollection = client.db('nexusLivingDB').collection('agreements');
@@ -349,26 +358,27 @@ async function run() {
     });
 
     // Send a ping to confirm a successful connection
-    
     await client.db('admin').command({ ping: 1 });
     console.log(
       'Pinged your deployment. You successfully connected to MongoDB!'
     );
-  } catch (err) {
-    console.error(err);
+  } finally {
+    // Ensures that the client will close when you finish/error
+    // await client.close(); // Keep this commented out for a continuously running server
   }
 }
-run();
+run().catch(console.dir);
 
 
 app.get('/', (req, res) => {
   res.send('A12 BMS Server is running');
 });
 
-/*
-app.listen(port, () => {
-  console.log(`BMS Server is running on port: ${port}`);
-});
-*/
+// Only listen on a port when running locally
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(port, () => {
+    console.log(`BMS Server is running on port: ${port}`);
+  });
+}
 
 module.exports = app;
