@@ -61,21 +61,21 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    
     await client.connect();
 
-    const apartmentCollection = client.db('nexusLivingDB').collection('apartments');
-    const agreementsCollection = client.db('nexusLivingDB').collection('agreements');
-    const announcementCollection = client.db('nexusLivingDB').collection('announcements');
-    const userCollection = client.db('nexusLivingDB').collection('users');
-    const couponsCollection = client.db('nexusLivingDB').collection('coupons');
-    const paymentsCollection = client.db('nexusLivingDB').collection('payments');
+    const db = client.db('nexusLivingDB');
+    const apartmentCollection = db.collection('apartments');
+    const usersCollection = db.collection('users');
+    const agreementsCollection = db.collection('agreements');
+    const paymentsCollection = db.collection('payments');
+    const announcementsCollection = db.collection('announcements');
+    const couponsCollection = db.collection('coupons'); // Added coupons collection
 
     // Admin Verification Middleware
     const verifyAdmin = async (req, res, next) => {
         const email = req.decoded.email;
         const query = { email: email };
-        const user = await userCollection.findOne(query);
+        const user = await usersCollection.findOne(query);
         const isAdmin = user?.role === 'admin';
         if (!isAdmin) {
             return res.status(403).send({ message: 'forbidden access' });
@@ -119,8 +119,8 @@ async function run() {
         try {
             const totalRooms = await apartmentCollection.countDocuments();
             const unavailableRooms = await agreementsCollection.countDocuments({ status: 'checked' });
-            const totalUsers = await userCollection.countDocuments();
-            const totalMembers = await userCollection.countDocuments({ role: 'member' });
+            const totalUsers = await usersCollection.countDocuments();
+            const totalMembers = await usersCollection.countDocuments({ role: 'member' });
 
             const availableRooms = totalRooms - unavailableRooms;
 
@@ -139,6 +139,23 @@ async function run() {
         }
     });
 
+    // Add: member/user overview stats
+    app.get('/user-stats', verifyToken, async (req, res) => {
+      try {
+        const email = req.decoded?.email;
+
+        const [myAgreements, myPayments, announces] = await Promise.all([
+          agreementsCollection.countDocuments({ user_email: email }),
+          paymentsCollection.countDocuments({ email }),
+          announcementsCollection.countDocuments({}),
+        ]);
+
+        res.send({ myAgreements, myPayments, announcements: announces });
+      } catch (error) {
+        res.status(500).send({ message: 'Failed to fetch user stats', error });
+      }
+    });
+
     // API to create or update a user (upsert)
     app.put('/users', async (req, res) => {
         const user = req.body;
@@ -149,14 +166,19 @@ async function run() {
             $setOnInsert: { role: 'user' }
         };
         const options = { upsert: true };
-        const result = await userCollection.updateOne(query, updateDoc, options);
+        const result = await usersCollection.updateOne(query, updateDoc, options);
         res.send(result);
     });
 
-    // API to get all coupons
-    app.get('/coupons', async (req, res) => {
-        const result = await couponsCollection.find().toArray();
-        res.send(result);
+    // API to get all coupons (for admin dashboard)
+    app.get('/coupons', verifyToken, verifyAdmin, async (req, res) => {
+        try {
+            const result = await couponsCollection.find().sort({ createdAt: -1 }).toArray();
+            res.send(result);
+        } catch (error) {
+            console.error('Failed to fetch coupons:', error);
+            res.status(500).send({ message: 'Failed to fetch coupons' });
+        }
     });
 
     // API to create a new coupon
@@ -203,7 +225,7 @@ async function run() {
     app.get('/coupons/:code', async (req, res) => {
         const code = req.params.code;
         // Only find the coupon if it is available
-        const query = { coupon_code: code, availability: 'available' };
+        const query = { code: code, availability: 'available' };
         const result = await couponsCollection.findOne(query);
         res.send(result); // Will send null if not found or unavailable
     });
@@ -213,7 +235,7 @@ async function run() {
     // API to get all members
     app.get('/users/members', verifyToken, verifyAdmin, async (req, res) => {
         const query = { role: 'member' };
-        const members = await userCollection.find(query).toArray();
+        const members = await usersCollection.find(query).toArray();
         res.send(members);
     });
 
@@ -226,7 +248,7 @@ async function run() {
                 role: 'user'
             }
         };
-        const result = await userCollection.updateOne(filter, updatedDoc);
+        const result = await usersCollection.updateOne(filter, updatedDoc);
         res.send(result);
     });
 
@@ -236,7 +258,7 @@ async function run() {
         if (req.decoded.email !== email) {
             return res.status(403).send({ message: 'forbidden access' });
         }
-        const user = await userCollection.findOne({ email: email });
+        const user = await usersCollection.findOne({ email: email });
         res.send({ admin: user?.role === 'admin' });
     });
 
@@ -246,7 +268,7 @@ async function run() {
         if (req.decoded.email !== email) {
             return res.status(403).send({ message: 'forbidden access' });
         }
-        const user = await userCollection.findOne({ email: email });
+        const user = await usersCollection.findOne({ email: email });
         res.send({ member: user?.role === 'member' });
     });
 
@@ -326,7 +348,7 @@ async function run() {
         // Update user's role to 'member'
         const userFilter = { email: agreement.user_email };
         const userUpdateDoc = { $set: { role: 'member' } };
-        await userCollection.updateOne(userFilter, userUpdateDoc);
+        await usersCollection.updateOne(userFilter, userUpdateDoc);
 
         // Update agreement status and set accept date
         const agreementUpdateDoc = { $set: { status: 'checked', agreement_date: new Date() } };
@@ -365,6 +387,27 @@ async function run() {
       }
       const query = { user_email: email };
       const result = await agreementsCollection.findOne(query);
+      res.send(result);
+    });
+
+    // Get user profile by email (secured)
+    app.get('/user/:email', verifyToken, async (req, res) => {
+      const email = req.params.email;
+      if (req.decoded?.email !== email) return res.status(403).send({ message: 'forbidden access' });
+      const profile = await usersCollection.findOne({ email }, { projection: { _id: 0, email: 1, phone: 1, address: 1 } });
+      res.send(profile || { email });
+    });
+
+    // Update user profile (phone, address) with upsert
+    app.put('/user/:email', verifyToken, async (req, res) => {
+      const email = req.params.email;
+      if (req.decoded?.email !== email) return res.status(403).send({ message: 'forbidden access' });
+      const { phone, address } = req.body || {};
+      const result = await usersCollection.updateOne(
+        { email },
+        { $set: { email, phone: phone || '', address: address || '' } },
+        { upsert: true }
+      );
       res.send(result);
     });
 
