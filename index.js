@@ -164,7 +164,7 @@ async function run() {
         const couponData = req.body;
         const newCoupon = {
             ...couponData,
-            availability: 'available' // Add default availability
+            availability: 'available'
         };
         const result = await couponsCollection.insertOne(newCoupon);
         res.send(result);
@@ -252,29 +252,40 @@ async function run() {
 
     // API to get all apartments with pagination and search
     app.get('/apartments', async (req, res) => {
-      const page = parseInt(req.query.page) || 0;
-      const size = parseInt(req.query.size) || 6;
-      const minRent = parseInt(req.query.minRent);
-      const maxRent = parseInt(req.query.maxRent);
-      const skip = page * size;
+      try {
+        const page = parseInt(req.query.page) || 0;
+        const size = parseInt(req.query.size) || 6;
 
-      const query = {};
+        const minRent = req.query.minRent;
+        const maxRent = req.query.maxRent;
 
-      if (!isNaN(minRent) && !isNaN(maxRent)) {
-        query.rent = { $gte: minRent, $lte: maxRent };
-      } else if (!isNaN(minRent)) {
-        query.rent = { $gte: minRent };
-      } else if (!isNaN(maxRent)) {
-        query.rent = { $lte: maxRent };
+        const sortBy = req.query.sortBy || 'rent';
+        const sortOrder = (req.query.sortOrder || 'asc').toLowerCase() === 'desc' ? -1 : 1;
+
+        const query = {};
+        // Rent filter only if both present and numeric
+        if (minRent !== '' && maxRent !== '' && !isNaN(minRent) && !isNaN(maxRent)) {
+          query.rent = { $gte: parseInt(minRent), $lte: parseInt(maxRent) };
+        }
+
+        // Whitelist sort fields
+        const allowedSort = new Set(['rent', 'floor_no', 'block_name', 'apartment_no', '_id', 'createdAt']);
+        const sortField = allowedSort.has(sortBy) ? sortBy : 'rent';
+        const sort = { [sortField]: sortOrder };
+
+        const total = await apartmentCollection.countDocuments(query);
+        const apartments = await apartmentCollection
+          .find(query)
+          .sort(sort)
+          .skip(page * size)
+          .limit(size)
+          .toArray();
+
+        res.send({ count: total, apartments });
+      } catch (e) {
+        console.error(e);
+        res.status(500).send({ message: 'Failed to fetch apartments' });
       }
-
-      const count = await apartmentCollection.countDocuments(query);
-      const apartments = await apartmentCollection.find(query).skip(skip).limit(size).toArray();
-      
-      res.send({
-        count,
-        apartments
-      });
     });
 
     // API to get all announcements
