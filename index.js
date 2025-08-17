@@ -212,14 +212,16 @@ async function run() {
 
     // API to get a specific member's accepted agreement
     app.get('/agreement/:email', verifyToken, async (req, res) => {
-        const email = req.params.email;
-        if (req.decoded.email !== email) {
-            return res.status(403).send({ message: 'forbidden access' });
+        try {
+          const email = req.params.email;
+          if (req.decoded?.email !== email) return res.status(403).send({ message: 'forbidden access' });
+          const agreement = await agreementsCollection.findOne({ user_email: email, status: 'accepted' });
+          res.send(agreement);
+        } catch (e) {
+          console.error('GET /agreement/:email', e);
+          res.status(500).send({ message: 'Failed to load agreement' });
         }
-        const query = { user_email: email, status: 'checked' };
-        const result = await agreementsCollection.findOne(query);
-        res.send(result);
-    });
+      });
 
     // API to validate a coupon code
     app.get('/coupons/:code', async (req, res) => {
@@ -312,20 +314,20 @@ async function run() {
 
     // API to get all announcements
     app.get('/announcements', async (req, res) => {
-      const result = await announcementCollection.find().sort({ date: -1 }).toArray();
+      const result = await announcementsCollection.find().sort({ date: -1 }).toArray();
       res.send(result);
     });
 
     // API to create a new announcement
     app.post('/announcements', verifyToken, verifyAdmin, async (req, res) => {
-        const announcementData = req.body;
-        const newAnnouncement = {
-            ...announcementData,
-            date: new Date(), 
-            type: 'info'      
-        };
-        const result = await announcementCollection.insertOne(newAnnouncement);
-        res.send(result);
+      const announcementData = req.body;
+      const newAnnouncement = {
+        ...announcementData,
+        date: new Date(),
+        type: 'info'
+      };
+      const result = await announcementsCollection.insertOne(newAnnouncement);
+      res.send(result);
     });
 
     // API to get all pending agreement requests
@@ -409,6 +411,21 @@ async function run() {
         { upsert: true }
       );
       res.send(result);
+    });
+
+    // API to get my payments (newly added)
+    app.get('/payments/me', verifyToken, async (req, res) => {
+      try {
+        const email = req.decoded?.email;
+        const payments = await paymentsCollection
+          .find({ email })
+          .sort({ payment_date: -1 })
+          .toArray();
+        res.send(payments);
+      } catch (e) {
+        console.error('GET /payments/me', e);
+        res.status(500).send({ message: 'Failed to load payments' });
+      }
     });
 
     // Send a ping to confirm a successful connection
